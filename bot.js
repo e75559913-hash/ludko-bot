@@ -6,11 +6,12 @@ const CHATS = ['@ChatPineapple', -1003570027486];
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-let game = { active: false, type: null, prize: null, secretNumber: null, min: null, max: null, silenceUntil: null, silenceSec: null, lastUser: null, lastName: null, chatId: null };
+let game = { active: false, type: '', prize: '', secretNumber: 0, min: 0, max: 0, silenceSec: 0, silenceUntil: 0, lastUser: 0, lastName: '', chatId: CHATS[0] };
 let players = {};
 let adminState = {};
-let processingDice = false;
+let diceLock = false;
 
+// ====== СТАРТ ======
 bot.onText(/\/start/, (msg) => {
     const uid = msg.from.id;
     if (msg.chat.type === 'private' && uid !== ADMIN_ID) {
@@ -28,16 +29,17 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, '🎰 Лудко-Бот на связи! /top');
 });
 
+// ====== КНОПКИ ======
 bot.on('callback_query', (q) => {
     if (q.from.id !== ADMIN_ID) return bot.answerCallbackQuery(q.id, { text: '🚫 Не админ' });
     const d = q.data;
-    
+
     if (d === 'g777') {
         bot.sendMessage(q.message.chat.id, '🎰 777\nВыбери чат:', {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Чат 1: ${CHATS[0]}`, callback_data: 'chat_0_777' }],
-                    [{ text: `Чат 2: ${CHATS[1]}`, callback_data: 'chat_1_777' }]
+                    [{ text: 'Чат 1: ' + CHATS[0], callback_data: 'chat_0_777' }],
+                    [{ text: 'Чат 2: ' + CHATS[1], callback_data: 'chat_1_777' }]
                 ]
             }
         });
@@ -45,8 +47,8 @@ bot.on('callback_query', (q) => {
         bot.sendMessage(q.message.chat.id, '🔢 Число\nВыбери чат:', {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Чат 1: ${CHATS[0]}`, callback_data: 'chat_0_guess' }],
-                    [{ text: `Чат 2: ${CHATS[1]}`, callback_data: 'chat_1_guess' }]
+                    [{ text: 'Чат 1: ' + CHATS[0], callback_data: 'chat_0_guess' }],
+                    [{ text: 'Чат 2: ' + CHATS[1], callback_data: 'chat_1_guess' }]
                 ]
             }
         });
@@ -54,48 +56,54 @@ bot.on('callback_query', (q) => {
         bot.sendMessage(q.message.chat.id, '⏳ Слово\nВыбери чат:', {
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: `Чат 1: ${CHATS[0]}`, callback_data: 'chat_0_word' }],
-                    [{ text: `Чат 2: ${CHATS[1]}`, callback_data: 'chat_1_word' }]
+                    [{ text: 'Чат 1: ' + CHATS[0], callback_data: 'chat_0_word' }],
+                    [{ text: 'Чат 2: ' + CHATS[1], callback_data: 'chat_1_word' }]
                 ]
             }
         });
     }
-    
+
     if (d.startsWith('chat_')) {
         const parts = d.split('_');
         const chatIndex = parseInt(parts[1]);
         const gameType = parts[2];
         game.chatId = CHATS[chatIndex];
-        
+
         if (gameType === '777') {
-            game = { active: true, type: '777', prize: null, chatId: game.chatId };
-            processingDice = false;
-            bot.sendMessage(q.message.chat.id, `🎰 777\nЧат: ${game.chatId}\nВведи приз:`);
+            game.active = true;
+            game.type = '777';
+            game.prize = '';
+            diceLock = false;
+            bot.sendMessage(q.message.chat.id, '🎰 777\nЧат: ' + game.chatId + '\nВведи приз:');
             adminState[q.from.id] = 'p777';
         } else if (gameType === 'guess') {
-            game = { active: true, type: 'guess', prize: null, secretNumber: null, min: null, max: null, chatId: game.chatId };
-            bot.sendMessage(q.message.chat.id, `🔢 Число\nЧат: ${game.chatId}\nВведи: МИН МАКС ЗАГАД ПРИЗ`);
+            game.active = true;
+            game.type = 'guess';
+            bot.sendMessage(q.message.chat.id, '🔢 Число\nЧат: ' + game.chatId + '\nВведи: МИН МАКС ЗАГАД ПРИЗ');
             adminState[q.from.id] = 'sguess';
         } else if (gameType === 'word') {
-            game = { active: true, type: 'word', prize: null, silenceSec: null, silenceUntil: null, lastUser: null, lastName: null, chatId: game.chatId };
-            bot.sendMessage(q.message.chat.id, `⏳ Слово\nЧат: ${game.chatId}\nВведи: СЕКУНДЫ ПРИЗ`);
+            game.active = true;
+            game.type = 'word';
+            game.lastUser = 0;
+            game.lastName = '';
+            bot.sendMessage(q.message.chat.id, '⏳ Слово\nЧат: ' + game.chatId + '\nВведи: СЕКУНДЫ ПРИЗ');
             adminState[q.from.id] = 'sword';
         }
     }
-    
     bot.answerCallbackQuery(q.id);
 });
 
+// ====== АДМИН ВВОДИТ НАСТРОЙКИ ======
 bot.on('message', (msg) => {
     if (msg.from.id !== ADMIN_ID) return;
-    const text = msg.text?.trim();
+    const text = msg.text ? msg.text.trim() : '';
     const state = adminState[msg.from.id];
-    
+
     if (state === 'p777') {
         game.prize = text;
         delete adminState[msg.from.id];
-        bot.sendMessage(game.chatId, `🎰 ИГРА 777!\nКидайте 🎰 — первый выбивший 777 получит: ${text}!`);
-        bot.sendMessage(msg.chat.id, `✅ Запущено! Приз: ${text}`);
+        bot.sendMessage(game.chatId, '🎰 ИГРА 777!\nКидайте 🎰 — первый выбивший 777 получит: ' + text + '!');
+        bot.sendMessage(msg.chat.id, '✅ Запущено! Приз: ' + text);
     } else if (state === 'sguess') {
         const p = text.split(' ');
         game.min = parseInt(p[0]);
@@ -103,45 +111,44 @@ bot.on('message', (msg) => {
         game.secretNumber = parseInt(p[2]);
         game.prize = p.slice(3).join(' ') || 'Приз';
         delete adminState[msg.from.id];
-        bot.sendMessage(game.chatId, `🔢 УГАДАЙ ЧИСЛО!\nОт ${game.min} до ${game.max}. Приз: ${game.prize}\n\nПишите числа — без подсказок!`);
-        bot.sendMessage(msg.chat.id, `✅ Загадано: ${game.secretNumber}`);
+        bot.sendMessage(game.chatId, '🔢 УГАДАЙ ЧИСЛО!\nОт ' + game.min + ' до ' + game.max + '. Приз: ' + game.prize + '\n\nПишите числа — без подсказок!');
+        bot.sendMessage(msg.chat.id, '✅ Загадано: ' + game.secretNumber);
     } else if (state === 'sword') {
         const p = text.split(' ');
         game.silenceSec = parseInt(p[0]);
         game.prize = p.slice(1).join(' ') || 'Приз';
         game.silenceUntil = Date.now() + game.silenceSec * 1000;
-        game.lastUser = null;
-        game.lastName = null;
+        game.lastUser = 0;
+        game.lastName = '';
         delete adminState[msg.from.id];
-        bot.sendMessage(game.chatId, `⏳ ПОСЛЕДНЕЕ СЛОВО!\nЕсли чат замолчит на ${game.silenceSec} сек — победит последний написавший.\nПриз: ${game.prize}\n\nОбщайтесь!`);
+        bot.sendMessage(game.chatId, '⏳ ПОСЛЕДНЕЕ СЛОВО!\nЕсли чат замолчит на ' + game.silenceSec + ' сек — победит последний написавший.\nПриз: ' + game.prize + '\n\nОбщайтесь!');
         bot.sendMessage(msg.chat.id, '✅ Запущено!');
     }
 });
 
+// ====== ИГРЫ В ЧАТЕ ======
 bot.on('message', (msg) => {
     if (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup') return;
     if (!game.active) return;
     if (msg.chat.id !== game.chatId) return;
-    
+
     const uid = msg.from.id;
     const uname = msg.from.username || msg.from.first_name || 'Аноним';
-    
-    // 🎰 777
+
+    // 777
     if (game.type === '777' && msg.dice && msg.dice.emoji === '🎰') {
-        if (processingDice) return;
-        processingDice = true;
-        
+        if (diceLock) return;
+        diceLock = true;
         if (msg.dice.value === 64) {
             if (!players[uid]) players[uid] = { name: uname, wins: 0 };
             players[uid].wins++;
             game.active = false;
-            bot.sendMessage(game.chatId, `🎉 @${uname} выбил 777! Получает: ${game.prize}!`);
+            bot.sendMessage(game.chatId, '🎉 @' + uname + ' выбил 777! Получает: ' + game.prize + '!');
         }
-        
-        setTimeout(() => { processingDice = false; }, 500);
+        setTimeout(function() { diceLock = false; }, 1000);
     }
-    
-    // 🔢 Угадай число
+
+    // Угадай число
     if (game.type === 'guess' && msg.text && /^-?\d+$/.test(msg.text.trim())) {
         const x = parseInt(msg.text.trim());
         if (x < game.min || x > game.max) return;
@@ -149,11 +156,11 @@ bot.on('message', (msg) => {
             if (!players[uid]) players[uid] = { name: uname, wins: 0 };
             players[uid].wins++;
             game.active = false;
-            bot.sendMessage(game.chatId, `🎉 @${uname} угадал число ${game.secretNumber}! Получает: ${game.prize}!`);
+            bot.sendMessage(game.chatId, '🎉 @' + uname + ' угадал число ' + game.secretNumber + '! Получает: ' + game.prize + '!');
         }
     }
-    
-    // ⏳ Последнее слово
+
+    // Последнее слово
     if (game.type === 'word' && (msg.text || msg.sticker || msg.dice)) {
         game.lastUser = uid;
         game.lastName = uname;
@@ -161,12 +168,13 @@ bot.on('message', (msg) => {
     }
 });
 
-setInterval(() => {
+// ====== ПРОВЕРКА ТИШИНЫ ======
+setInterval(function() {
     if (game.active && game.type === 'word' && game.silenceUntil && Date.now() >= game.silenceUntil) {
         if (game.lastUser) {
             if (!players[game.lastUser]) players[game.lastUser] = { name: game.lastName, wins: 0 };
             players[game.lastUser].wins++;
-            bot.sendMessage(game.chatId, `⏰ Время вышло! Последним был @${game.lastName}.\n🎉 Получает: ${game.prize}!`);
+            bot.sendMessage(game.chatId, '⏰ Время вышло! Последним был @' + game.lastName + '.\n🎉 Получает: ' + game.prize + '!');
         } else {
             bot.sendMessage(game.chatId, '⏰ Время вышло, но никто не написал...');
         }
@@ -174,13 +182,14 @@ setInterval(() => {
     }
 }, 5000);
 
+// ====== ТОП ======
 bot.onText(/\/top/, (msg) => {
     if (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup') return;
-    const arr = Object.values(players).sort((a, b) => b.wins - a.wins).slice(0, 10);
+    const arr = Object.values(players).sort(function(a, b) { return b.wins - a.wins; }).slice(0, 10);
     if (!arr.length) return bot.sendMessage(msg.chat.id, '🏆 ТОП-10 ЛУДОМАНОВ пока пуст...');
     let txt = '🏆 ТОП-10 ЛУДОМАНОВ:\n\n';
-    arr.forEach((p, i) => txt += `${i+1}. ${p.name}: ${p.wins} побед\n`);
+    arr.forEach(function(p, i) { txt += (i+1) + '. ' + p.name + ': ' + p.wins + ' побед\n'; });
     bot.sendMessage(msg.chat.id, txt);
 });
 
-console.log('🎰 ЛУДКО-БОТ ГОТОВ! Жду 777...');
+console.log('🎰 ЛУДКО-БОТ ГОТОВ!');
