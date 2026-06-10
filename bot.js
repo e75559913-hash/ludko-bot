@@ -2,13 +2,14 @@ const TelegramBot = require('node-telegram-bot-api');
 
 const TOKEN = '8871083538:AAF2v9Vulpk_UqEQTI33C1Q_gurtaIDrdpo';
 const ADMIN_ID = 6669055918;
-const CHATS = ['@ChatPineapple', -1003570027486]; // Основной и тестовый
+const CHATS = ['@ChatPineapple', -1003570027486];
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
 let game = { active: false, type: null, prize: null, secretNumber: null, min: null, max: null, silenceUntil: null, silenceSec: null, lastUser: null, lastName: null, chatId: null };
 let players = {};
 let adminState = {};
+let processingDice = false; // <-- Защита от спама
 
 bot.onText(/\/start/, (msg) => {
     const uid = msg.from.id;
@@ -31,7 +32,6 @@ bot.on('callback_query', (q) => {
     if (q.from.id !== ADMIN_ID) return bot.answerCallbackQuery(q.id, { text: '🚫 Не админ' });
     const d = q.data;
     
-    // Выбор чата
     if (d === 'g777') {
         bot.sendMessage(q.message.chat.id, '🎰 777\nВыбери чат:', {
             reply_markup: {
@@ -61,7 +61,6 @@ bot.on('callback_query', (q) => {
         });
     }
     
-    // Обработка выбора чата
     if (d.startsWith('chat_')) {
         const parts = d.split('_');
         const chatIndex = parseInt(parts[1]);
@@ -70,6 +69,7 @@ bot.on('callback_query', (q) => {
         
         if (gameType === '777') {
             game = { active: true, type: '777', prize: null, chatId: game.chatId };
+            processingDice = false;
             bot.sendMessage(q.message.chat.id, `🎰 777\nЧат: ${game.chatId}\nВведи приз:`);
             adminState[q.from.id] = 'p777';
         } else if (gameType === 'guess') {
@@ -126,11 +126,19 @@ bot.on('message', (msg) => {
     const uid = msg.from.id;
     const uname = msg.from.username || msg.from.first_name || 'Аноним';
     
-    if (game.type === '777' && msg.dice && msg.dice.emoji === '🎰' && msg.dice.value === 64) {
-        if (!players[uid]) players[uid] = { name: uname, wins: 0 };
-        players[uid].wins++;
-        game.active = false;
-        bot.sendMessage(game.chatId, `🎉 @${uname} выбил 777! Получает: ${game.prize}!`);
+    // 🎰 777 — защита от спама
+    if (game.type === '777' && msg.dice && msg.dice.emoji === '🎰') {
+        if (processingDice) return;
+        processingDice = true;
+        
+        if (msg.dice.value === 64) {
+            if (!players[uid]) players[uid] = { name: uname, wins: 0 };
+            players[uid].wins++;
+            game.active = false;
+            bot.sendMessage(game.chatId, `🎉 @${uname} выбил 777! Получает: ${game.prize}!`);
+        }
+        
+        setTimeout(() => { processingDice = false; }, 100);
     }
     
     if (game.type === 'guess' && msg.text && /^-?\d+$/.test(msg.text.trim())) {
