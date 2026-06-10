@@ -6,7 +6,7 @@ const CHAT_ID = -1003570027486;
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-let game = { active: false, type: null, prize: null, secretNumber: null, min: null, max: null, silenceUntil: null, silenceSec: null };
+let game = { active: false, type: null, prize: null, secretNumber: null, min: null, max: null, silenceUntil: null, silenceSec: null, lastUser: null, lastName: null };
 let players = {};
 let adminState = {};
 
@@ -39,7 +39,7 @@ bot.on('callback_query', (q) => {
         bot.sendMessage(q.message.chat.id, '🔢 Введи: МИН МАКС ЗАГАД ПРИЗ');
         adminState[q.from.id] = 'sguess';
     } else if (d === 'gword') {
-        game = { active: true, type: 'word', prize: null, silenceSec: null, silenceUntil: null };
+        game = { active: true, type: 'word', prize: null, silenceSec: null, silenceUntil: null, lastUser: null, lastName: null };
         bot.sendMessage(q.message.chat.id, '⏳ Введи: СЕКУНДЫ ПРИЗ');
         adminState[q.from.id] = 'sword';
     }
@@ -63,15 +63,17 @@ bot.on('message', (msg) => {
         game.secretNumber = parseInt(p[2]);
         game.prize = p.slice(3).join(' ') || 'Приз';
         delete adminState[msg.from.id];
-        bot.sendMessage(CHAT_ID, `🔢 УГАДАЙ ЧИСЛО! От ${game.min} до ${game.max}. Приз: ${game.prize}`);
+        bot.sendMessage(CHAT_ID, `🔢 УГАДАЙ ЧИСЛО!\nОт ${game.min} до ${game.max}. Приз: ${game.prize}\n\nПишите числа — без подсказок!`);
         bot.sendMessage(msg.chat.id, `✅ Загадано: ${game.secretNumber}`);
     } else if (state === 'sword') {
         const p = text.split(' ');
         game.silenceSec = parseInt(p[0]);
         game.prize = p.slice(1).join(' ') || 'Приз';
         game.silenceUntil = Date.now() + game.silenceSec * 1000;
+        game.lastUser = null;
+        game.lastName = null;
         delete adminState[msg.from.id];
-        bot.sendMessage(CHAT_ID, `⏳ ПОСЛЕДНЕЕ СЛОВО! Тишина ${game.silenceSec} сек = победа. Приз: ${game.prize}`);
+        bot.sendMessage(CHAT_ID, `⏳ ПОСЛЕДНЕЕ СЛОВО!\nЕсли чат замолчит на ${game.silenceSec} сек — победит последний написавший.\nПриз: ${game.prize}\n\nОбщайтесь!`);
         bot.sendMessage(msg.chat.id, '✅ Запущено!');
     }
 });
@@ -88,7 +90,7 @@ bot.on('message', (msg) => {
         if (!players[uid]) players[uid] = { name: uname, wins: 0 };
         players[uid].wins++;
         game.active = false;
-        bot.sendMessage(CHAT_ID, `🎉 @${uname} выбил 777! Приз: ${game.prize}!`);
+        bot.sendMessage(CHAT_ID, `🎉 @${uname} выбил 777! Получает: ${game.prize}!`);
     }
     
     if (game.type === 'guess' && msg.text && /^-?\d+$/.test(msg.text.trim())) {
@@ -98,31 +100,37 @@ bot.on('message', (msg) => {
             if (!players[uid]) players[uid] = { name: uname, wins: 0 };
             players[uid].wins++;
             game.active = false;
-            bot.sendMessage(CHAT_ID, `🎉 @${uname} угадал ${game.secretNumber}! Приз: ${game.prize}!`);
-        } else if (x < game.secretNumber) {
-            bot.sendMessage(CHAT_ID, '📈 Больше!', { reply_to_message_id: msg.message_id });
-        } else {
-            bot.sendMessage(CHAT_ID, '📉 Меньше!', { reply_to_message_id: msg.message_id });
+            bot.sendMessage(CHAT_ID, `🎉 @${uname} угадал число ${game.secretNumber}! Получает: ${game.prize}!`);
         }
+        // Без подсказок — ничего не отвечаем
     }
     
     if (game.type === 'word' && (msg.text || msg.sticker || msg.dice)) {
+        game.lastUser = uid;
+        game.lastName = uname;
         game.silenceUntil = Date.now() + game.silenceSec * 1000;
     }
 });
 
+// Проверка тишины
 setInterval(() => {
     if (game.active && game.type === 'word' && game.silenceUntil && Date.now() >= game.silenceUntil) {
+        if (game.lastUser) {
+            if (!players[game.lastUser]) players[game.lastUser] = { name: game.lastName, wins: 0 };
+            players[game.lastUser].wins++;
+            bot.sendMessage(CHAT_ID, `⏰ Время вышло! Последним был @${game.lastName}.\n🎉 Получает: ${game.prize}!`);
+        } else {
+            bot.sendMessage(CHAT_ID, '⏰ Время вышло, но никто не написал...');
+        }
         game.active = false;
-        bot.sendMessage(CHAT_ID, '⏰ Время вышло!');
     }
 }, 5000);
 
 bot.onText(/\/top/, (msg) => {
     if (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup') return;
     const arr = Object.values(players).sort((a, b) => b.wins - a.wins).slice(0, 10);
-    if (!arr.length) return bot.sendMessage(CHAT_ID, 'Топ пуст.');
-    let txt = '🏆 ТОП-10:\n\n';
+    if (!arr.length) return bot.sendMessage(CHAT_ID, '🏆 ТОП-10 ЛУДОМАНОВ пока пуст...');
+    let txt = '🏆 ТОП-10 ЛУДОМАНОВ:\n\n';
     arr.forEach((p, i) => txt += `${i+1}. ${p.name}: ${p.wins} побед\n`);
     bot.sendMessage(CHAT_ID, txt);
 });
