@@ -96,7 +96,8 @@ bot.on('callback_query', (q) => {
 // ====== АДМИН ВВОДИТ НАСТРОЙКИ ======
 bot.on('message', (msg) => {
     if (msg.from.id !== ADMIN_ID) return;
-    const text = msg.text ? msg.text.trim() : '';
+    if (!msg.text) return;
+    const text = msg.text.trim();
     const state = adminState[msg.from.id];
 
     if (state === 'p777') {
@@ -106,6 +107,7 @@ bot.on('message', (msg) => {
         bot.sendMessage(msg.chat.id, `✅ Запущено! Приз: ${text}`);
     } else if (state === 'sguess') {
         const p = text.split(' ');
+        if (p.length < 3) return;
         game.min = parseInt(p[0]);
         game.max = parseInt(p[1]);
         game.secretNumber = parseInt(p[2]);
@@ -115,6 +117,7 @@ bot.on('message', (msg) => {
         bot.sendMessage(msg.chat.id, `✅ Загадано: ${game.secretNumber}`);
     } else if (state === 'sword') {
         const p = text.split(' ');
+        if (p.length < 1) return;
         game.silenceSec = parseInt(p[0]);
         game.prize = p.slice(1).join(' ') || 'Приз';
         game.silenceUntil = Date.now() + game.silenceSec * 1000;
@@ -126,16 +129,19 @@ bot.on('message', (msg) => {
     }
 });
 
-// ====== ИГРЫ В ЧАТЕ ======
+// ====== ИГРЫ В ЧАТЕ (САМЫЙ ГЛАВНЫЙ БЛОК) ======
 bot.on('message', (msg) => {
+    // Проверяем что это группа
     if (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup') return;
+    // Проверяем что игра активна
     if (!game.active) return;
+    // Проверяем что сообщение в правильном чате
     if (msg.chat.id !== game.chatId) return;
 
     const uid = msg.from.id;
     const uname = msg.from.username || msg.from.first_name || 'Аноним';
 
-    // 777
+    // 🎰 777
     if (game.type === '777' && msg.dice && msg.dice.emoji === '🎰') {
         if (diceLock) return;
         diceLock = true;
@@ -148,7 +154,7 @@ bot.on('message', (msg) => {
         setTimeout(() => { diceLock = false; }, 1000);
     }
 
-    // Угадай число
+    // 🔢 Угадай число
     if (game.type === 'guess' && msg.text && /^-?\d+$/.test(msg.text.trim())) {
         const x = parseInt(msg.text.trim());
         if (x < game.min || x > game.max) return;
@@ -160,7 +166,7 @@ bot.on('message', (msg) => {
         }
     }
 
-    // Последнее слово
+    // ⏳ Последнее слово
     if (game.type === 'word' && (msg.text || msg.sticker || msg.dice)) {
         game.lastUser = uid;
         game.lastName = uname;
