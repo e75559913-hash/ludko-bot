@@ -9,7 +9,7 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 let game = { active: false, type: null, prize: null, secretNumber: null, min: null, max: null, silenceUntil: null, silenceSec: null, lastUser: null, lastName: null, chatId: null };
 let players = {};
 let adminState = {};
-let processingDice = false; // <-- Защита от спама
+let processingDice = false;
 
 bot.onText(/\/start/, (msg) => {
     const uid = msg.from.id;
@@ -126,7 +126,7 @@ bot.on('message', (msg) => {
     const uid = msg.from.id;
     const uname = msg.from.username || msg.from.first_name || 'Аноним';
     
-    // 🎰 777 — защита от спама
+    // 🎰 777
     if (game.type === '777' && msg.dice && msg.dice.emoji === '🎰') {
         if (processingDice) return;
         processingDice = true;
@@ -138,9 +138,10 @@ bot.on('message', (msg) => {
             bot.sendMessage(game.chatId, `🎉 @${uname} выбил 777! Получает: ${game.prize}!`);
         }
         
-        setTimeout(() => { processingDice = false; }, 100);
+        setTimeout(() => { processingDice = false; }, 500);
     }
     
+    // 🔢 Угадай число
     if (game.type === 'guess' && msg.text && /^-?\d+$/.test(msg.text.trim())) {
         const x = parseInt(msg.text.trim());
         if (x < game.min || x > game.max) return;
@@ -152,6 +153,7 @@ bot.on('message', (msg) => {
         }
     }
     
+    // ⏳ Последнее слово
     if (game.type === 'word' && (msg.text || msg.sticker || msg.dice)) {
         game.lastUser = uid;
         game.lastName = uname;
